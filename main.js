@@ -289,7 +289,8 @@ function constrainBounds(input, mode = currentModeKey()) {
   const proposedX = Math.round(Number(candidate.x));
   const proposedY = Math.round(Number(candidate.y));
   const visibleWidth = Math.min(96, width);
-  const visibleHeight = Math.min(48, height);
+  // The 32 px drag header is sufficient to recover a deliberately tucked-away HUD.
+  const visibleHeight = Math.min(32, height);
   const x = Number.isFinite(proposedX)
     ? Math.min(area.x + area.width - visibleWidth, Math.max(area.x - width + visibleWidth, proposedX))
     : cornerBounds(width, height, display).x;
@@ -375,6 +376,10 @@ function createMainWindow() {
   const limits = modeLimits();
   const initial = initialBounds();
 
+  // macOS can pull a partly offscreen window fully into the work area while it
+  // is being created. Suppress those synthetic move events and re-apply the
+  // user's already-constrained bounds after the native window is visible.
+  changingWindowMode = true;
   mainWindow = new BrowserWindow({
     ...initial,
     minWidth: limits.minWidth,
@@ -411,7 +416,14 @@ function createMainWindow() {
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
-  mainWindow.once('ready-to-show', () => showMainWindow({ focus: false }));
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.showInactive();
+    mainWindow.setBounds(initial, false);
+    setTimeout(() => {
+      changingWindowMode = false;
+      persistCurrentBounds();
+    }, 300).unref?.();
+  });
   mainWindow.on('move', schedulePersistBounds);
   mainWindow.on('resize', schedulePersistBounds);
   mainWindow.on('close', (event) => {

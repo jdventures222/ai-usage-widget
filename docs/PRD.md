@@ -5,6 +5,8 @@
 - Product: AI Usage Widget
 - Version: 2.0.0
 - Release target: macOS on the owner's Apple Silicon MacBook Air
+- Acceptance: installed and live-verified on the target MacBook Air
+- Distribution: locally ad-hoc signed; not Developer ID signed or notarized
 - Upstream baseline: Claude Usage Widget v1.7.6
 - Updated: 2026-08-30
 
@@ -144,3 +146,13 @@ Both subscription data sources are undocumented or experimental and can change w
 - Made the default surface a four-row, translucent, always-on-top corner HUD with no focus theft.
 - Added compact/expanded modes, safe-area corner anchoring, all-Spaces visibility, opacity control, and persistent launch behavior for the target MacBook Air.
 - Added unrestricted manual movement and bounded native resizing, with independent compact/expanded geometry and no refresh-driven snapping.
+- Re-applied saved bounds after native macOS window creation and retained one draggable header-height onscreen so a deliberately edge-positioned HUD survives packaged relaunch without being pulled fully onscreen.
+
+### 2026-08-30 — Packaged acceptance
+
+- Verified the Electron 41.10.7 arm64 runtime against Electron's published archive checksum before packaging.
+- Built a hardened-runtime, ad-hoc-signed arm64 app and DMG with ASAR integrity enforcement and disabled Node/CLI escape fuses.
+- Passed all 19 automated tests, syntax checks, dependency audits, deep code-signature verification, DMG verification, and mounted-image inspection.
+- Installed the 2.0.0 bundle under `com.jameshan.aiusagewidget`, confirmed both providers live, and confirmed that only the four approved bucket IDs exist in snapshots and history.
+- Confirmed the native packaged window preserves the owner's accepted `1423,967` position and `287×207` size across relaunch and live refresh.
+- Moved the legacy application bundle to Trash only after replacement acceptance; preserved its configuration contents and hardened that file to owner-only permissions.

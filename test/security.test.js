@@ -50,6 +50,8 @@ test('HUD uses supported native movement and resizing with separate saved bounds
   assert.match(main, /movable:\s*true/);
   assert.match(main, /transparent:\s*false/);
   assert.match(main, /windowBoundsV2\.\$\{mode\}/);
+  assert.match(main, /visibleHeight = Math\.min\(32, height\)/);
+  assert.match(main, /showInactive\(\);\s*mainWindow\.setBounds\(initial, false\)/);
   assert.doesNotMatch(main, /ipcMain\.on\('window:resize'/);
   assert.match(styles, /-webkit-app-region:\s*drag/);
 });

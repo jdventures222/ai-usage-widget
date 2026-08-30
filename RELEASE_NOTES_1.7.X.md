@@ -1,5 +1,7 @@
 # Claude Usage Widget v1.7.X Release History
 
+> Historical upstream record retained for attribution and migration context. These Claude-only features do not describe AI Usage Widget 2.0; see `README.md` and `docs/PRD.md` for the current product.
+
 This document consolidates all release notes for the 1.7.x release series.
 
 ---

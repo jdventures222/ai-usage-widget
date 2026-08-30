@@ -35,15 +35,23 @@ function parseResponseBody(bodyText) {
   // This provides explicit errors when Claude.ai modifies their API or CSP.
   for (const sig of BLOCKED_SIGNATURES) {
     if (bodyText.includes(sig.pattern)) {
-      throw new Error(`${sig.error}: ${bodyText.substring(0, 200)}`);
+      throw new Error(sig.error);
     }
   }
 
   try {
     return JSON.parse(bodyText);
   } catch (parseErr) {
-    throw new Error('InvalidJSON: ' + bodyText.substring(0, 200));
+    throw new Error('InvalidJSON');
   }
+}
+
+function validateClaudeApiUrl(value) {
+  const url = new URL(value);
+  if (url.protocol !== 'https:' || url.hostname !== 'claude.ai' || !url.pathname.startsWith('/api/')) {
+    throw new Error('BlockedURL');
+  }
+  return url.toString();
 }
 
 /**
@@ -53,20 +61,34 @@ function parseResponseBody(bodyText) {
  * @param {number} options.timeoutMs - Request timeout in milliseconds (default: 30000)
  * @returns {Promise<Object>} Parsed JSON response
  */
-function fetchViaWindow(url, { timeoutMs = 30000 } = {}) {
+function fetchViaWindow(url, { timeoutMs = 30000, browserSession } = {}) {
   return new Promise((resolve, reject) => {
+    let safeUrl;
+    try { safeUrl = validateClaudeApiUrl(url); }
+    catch (error) { reject(error); return; }
     const win = new BrowserWindow({
       width: 800,
       height: 600,
-      show: false,      webPreferences: {
+      show: false,
+      webPreferences: {
         nodeIntegration: false,
-        contextIsolation: true
+        contextIsolation: true,
+        sandbox: true,
+        ...(browserSession ? { session: browserSession } : {})
       }
     });
 
+    let settled = false;
+    const finish = (error, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (!win.isDestroyed()) win.destroy();
+      if (error) reject(error); else resolve(value);
+    };
+
     const timeout = setTimeout(() => {
-      win.close();
-      reject(new Error('Request timeout'));
+      finish(new Error('RequestTimeout'));
     }, timeoutMs);
 
     win.webContents.on('did-finish-load', async () => {
@@ -74,25 +96,23 @@ function fetchViaWindow(url, { timeoutMs = 30000 } = {}) {
         const bodyText = await win.webContents.executeJavaScript(
           'document.body.innerText || document.body.textContent'
         );
-        clearTimeout(timeout);
-        win.close();
-
         const data = parseResponseBody(bodyText);
-        resolve(data);
+        finish(null, data);
       } catch (err) {
-        clearTimeout(timeout);
-        win.close();
-        reject(err);
+        finish(err);
       }
     });
 
     win.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-      clearTimeout(timeout);
-      win.close();
-      reject(new Error(`LoadFailed: ${errorCode} ${errorDescription}`));
+      finish(new Error(`LoadFailed:${errorCode}`));
     });
 
-    win.loadURL(url);
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (event, nextUrl) => {
+      try { validateClaudeApiUrl(nextUrl); }
+      catch { event.preventDefault(); finish(new Error('BlockedNavigation')); }
+    });
+    win.loadURL(safeUrl);
   });
 }
 
@@ -105,80 +125,18 @@ function fetchViaWindow(url, { timeoutMs = 30000 } = {}) {
  * @param {number} options.timeoutMs - Per-request timeout in milliseconds (default: 10000)
  * @returns {Promise<Object[]>} Array of parsed JSON responses (or errors)
  */
-function fetchMultipleViaWindow(urls, { timeoutMs = 10000 } = {}) {
-  return new Promise((resolve, reject) => {
-    const win = new BrowserWindow({
-      width: 800,
-      height: 600,
-      show: false,
-      webPreferences: {
-        nodeIntegration: false,
-        contextIsolation: true
-      }
-    });
-
-    const results = [];
-    let currentIndex = 0;
-    let currentTimeout = null;
-
-    /**
-     * Load the next URL in the sequence
-     */
-    function loadNext() {
-      if (currentIndex >= urls.length) {
-        // All URLs fetched successfully
-        win.close();
-        resolve(results);
-        return;
-      }
-
-      const url = urls[currentIndex];
-      
-      currentTimeout = setTimeout(() => {
-        win.close();
-        reject(new Error(`Request timeout for URL ${currentIndex}: ${url}`));
-      }, timeoutMs);
-
-      win.loadURL(url);
+async function fetchMultipleViaWindow(urls, options = {}) {
+  const results = [];
+  for (const url of urls) {
+    try {
+      const value = await fetchViaWindow(url, options);
+      results.push({ ok: true, value });
+    } catch (error) {
+      if (!options.continueOnError) throw error;
+      results.push({ ok: false, error });
     }
-
-    win.webContents.on('did-finish-load', async () => {
-      try {
-        const bodyText = await win.webContents.executeJavaScript(
-          'document.body.innerText || document.body.textContent'
-        );
-        
-        if (currentTimeout) {
-          clearTimeout(currentTimeout);
-          currentTimeout = null;
-        }
-
-        const data = parseResponseBody(bodyText);
-        results.push(data);
-        currentIndex++;
-        loadNext();
-      } catch (err) {
-        if (currentTimeout) {
-          clearTimeout(currentTimeout);
-          currentTimeout = null;
-        }
-        win.close();
-        reject(err);
-      }
-    });
-
-    win.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-      if (currentTimeout) {
-        clearTimeout(currentTimeout);
-        currentTimeout = null;
-      }
-      win.close();
-      reject(new Error(`LoadFailed at URL ${currentIndex}: ${errorCode} ${errorDescription}`));
-    });
-
-    // Start loading the first URL
-    loadNext();
-  });
+  }
+  return results;
 }
 
-module.exports = { fetchViaWindow, fetchMultipleViaWindow };
+module.exports = { fetchViaWindow, fetchMultipleViaWindow, parseResponseBody, validateClaudeApiUrl };

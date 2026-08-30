@@ -3,10 +3,10 @@
 // Since the Fable launch, claude.ai no longer fills the legacy top-level
 // seven_day_<model> fields for scoped models — they arrive as null. The
 // per-model weekly limits are only present in the `limits` array as entries
-// with kind "weekly_scoped" (see upstream issue #97). This module maps each
-// such entry onto a synthetic top-level `seven_day_<name>` field so that BOTH
-// consumers — history storage in main.js and the renderer's row/chart logic —
-// see the same normalized fields from a single source of truth.
+// with kind "weekly_scoped" (see upstream issue #97). This compatibility
+// normalizer maps those entries onto synthetic top-level fields. The provider
+// presentation policy later selects Fable and intentionally discards all other
+// scoped limits before anything reaches storage or the renderer.
 
 /**
  * Derive the synthetic field key for a scoped model display name.

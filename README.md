@@ -1,242 +1,100 @@
-# Claude Usage Widget
+# AI Usage Widget
 
-A beautiful, standalone desktop widget for **Windows, macOS, and Linux** that displays your Claude.ai usage statistics in real-time.
+A private, low-profile macOS HUD for the subscription usage that matters on this MacBook Air.
 
-![Claude Usage Widget - Main](assets/screenshot-main.png)
+The compact view intentionally contains only:
 
----
+- One canonical Codex usage summary.
+- Claude's 5-hour limit.
+- Claude's weekly limit.
+- Claude's Fable weekly limit.
 
-## Features
+GPT Reserve, Codex Spark, other Claude scoped/model limits, spend controls, prepaid balances, and credits are discarded before display and history storage.
 
-🎯 **Real-time Usage Tracking** — Monitor both session and weekly usage limits  
-📊 **Visual Progress Bars** — Clean, gradient progress indicators with configurable warning thresholds  
-⏱️ **Countdown Timers** — Circular timers showing time elapsed in the current session window  
-🔄 **Auto-refresh** — Updates every 5 minutes automatically, with animated refresh indicator  
-📈 **Usage History Graph** — Toggleable 7-day chart showing session and weekly trends over time  
-🌍 **Currency Support** — Extra usage displays your account's billing currency (€, £, $)  
-🎨 **Modern UI** — Sleek, draggable widget with dark and light themes  
-🔒 **Secure** — Encrypted credential storage  
-📍 **Always on Top** — User-controlled, stays visible across all workspaces  
-💾 **System Tray** — Minimizes to tray for easy access  
-⚙️ **Settings Panel** — Persistent preferences for startup, theme, tray, thresholds, and date/time formats  
-🔔 **Usage Alerts** — Desktop notifications when usage crosses configurable warn/danger thresholds  
-🔔 **Update Notifications** — Automatic check for new releases on startup  
-🕐 **Configurable Date & Time Formats** — 12h/24h time, and flexible weekly reset date display  
-📐 **Compact Mode** — Minimal view for when you just need a quick glance  
-🧩 **Per-Model Breakdowns** — Rows and chart lines for Sonnet, Opus, Fable, Cowork, OAuth Apps, and Design usage when your account reports them  
-💳 **Credit Clarity** — Monthly spend cap and credit balance shown separately, with a promo-vs-purchased split and expiry warnings  
-👥 **Multi-Account Support** — Run isolated instances for separate accounts via the `--profile` flag (see below)  
+## Experience
 
-> For a full history of changes by version, see [Release Notes](RELEASE_NOTES_1.7.X.md).
+- Starts as a translucent four-row HUD without taking keyboard focus.
+- Remains above normal windows and can appear on every macOS Space.
+- Drag the header to move it; drag a native edge or corner to resize it.
+- Remembers compact and expanded position/size independently.
+- Expand for provider recovery, local history, settings, and diagnostics.
+- Supports opacity, snap-corner, theme, refresh, alerts, menu-bar-only, and launch-at-login controls.
 
----
+The menu-bar icon is always available as a recovery surface if the HUD is hidden.
 
-## Screenshots
+## Data sources
 
-### Settings Panel
+### Codex
 
-![Claude Usage Widget - Settings](assets/screenshot-settings.png)
+The app discovers the locally installed, already authenticated `codex` executable and performs a bounded one-shot JSON-RPC exchange with `codex app-server --stdio`. It never reads `~/.codex/auth.json`, copies a token, or launches through a shell.
 
+Only the canonical `codex` limit group is accepted. A legacy single-limit response is accepted only when the multi-limit map is absent.
 
-### Settings Options
+### Claude
 
-- ⚙️ **Launch at startup** — Auto-start with Windows or macOS login
-- 📌 **Hide from taskbar** — Tray-only mode
-- 🎨 **Theme selector** — Dark / Light / System
-- ⚠️ **Warning thresholds** — Configurable amber and red levels for usage bars
-- 🔔 **Usage alerts** — Desktop notifications at warn/danger thresholds
-- 🕐 **Time format** — 12h or 24h
-- 📅 **Date format** — Controls how the weekly reset date is displayed
-- 📐 **Compact mode** — Minimal view
+The app uses a dedicated sandboxed Electron browser session for the existing Claude web-account integration. Its HTTP-only session cookie stays in the main process and is encrypted using Electron `safeStorage`.
 
----
+The Claude and Codex subscription interfaces used here are private or experimental. They can change without notice. This project is not affiliated with Anthropic or OpenAI.
 
-## Installation
+## First launch and migration
 
-### Download Pre-built Release
+The new app uses its own identity and data directory:
 
-**Windows:**
-1. Download the latest `Claude-Usage-Widget-{version}-win-Setup.exe` (installer) or `Claude-Usage-Widget-{version}-win-portable.exe` (no install needed) from [Releases](../../releases)
-2. Run the installer or portable exe
-3. Launch "Claude Usage Widget" from the Start Menu (installer) or directly (portable)
-4. **To launch at Windows startup (portable only):** Press `Win+R`, type `shell:startup`, and copy the portable `.exe` into that folder. To update, copy the new version in and delete the old one.
-
-**macOS:**
-1. Download the latest `Claude-Usage-Widget-{version}-macOS-arm64.dmg` (Apple Silicon) or `Claude-Usage-Widget-{version}-macOS-x64.dmg` (Intel) from [Releases](../../releases)
-2. Open the DMG and drag the app to your Applications folder
-3. Launch "Claude Usage Widget" from Applications
-
-> **⚠️ macOS Security Notice:** Because this app is not yet notarized with Apple, macOS Gatekeeper may show a "damaged or can't be opened" warning. To fix this, run the following command in Terminal after installing:
-> ```
-> xattr -cr /Applications/Claude\ Usage\ Widget.app
-> ```
-> Then try launching the app again.
-
-**Linux:**
-1. Download the latest `Claude-Usage-Widget-{version}-linux-x86_64.AppImage` (Intel/AMD) or `Claude-Usage-Widget-{version}-linux-arm64.AppImage` (ARM) from [Releases](../../releases)
-2. Make it executable: `chmod +x Claude-Usage-Widget-*.AppImage`
-3. Run it: `./Claude-Usage-Widget-*.AppImage`
-
-> **Note:** AppImage runs without installation on most Linux distributions. On Ubuntu 22.04+, you may need to install a dependency first:
-> ```bash
-> sudo apt install libfuse2
-> ```
-
-#### Linux: Desktop Launcher & Autostart (optional)
-
-By default the AppImage runs from wherever you put it. To get a clickable icon in your app launcher (and optionally launch at login), follow these steps.
-
-**1. Place the AppImage somewhere permanent:**
-```bash
-mkdir -p ~/.local/bin
-mv Claude-Usage-Widget-*.AppImage ~/.local/bin/claude-usage-widget.AppImage
-chmod +x ~/.local/bin/claude-usage-widget.AppImage
+```text
+~/Library/Application Support/ai-usage-widget/
 ```
 
-**2. Create a desktop entry:**
-```bash
-cat > ~/.local/share/applications/claude-usage-widget.desktop << EOF
-[Desktop Entry]
-Name=Claude Usage Widget
-Comment=Monitor Claude.ai usage
-Exec=$HOME/.local/bin/claude-usage-widget.AppImage --no-sandbox
-Icon=$HOME/.local/bin/claude-usage-widget.AppImage
-Terminal=false
-Type=Application
-Categories=Utility;
-StartupNotify=true
-EOF
-```
+On first launch it reads the old Claude Usage Widget config as an immutable migration source. Supported history and settings are normalized, and a constrained one-time helper re-encrypts the existing Claude credential from the old Keychain identity to the new one without writing plaintext.
 
-> **Note:** The `--no-sandbox` flag is required for Electron-based AppImages on most Linux systems due to sandbox namespace restrictions. This is an Electron/Chrome limitation, not specific to this widget.
+The old config is not modified. The old application should be moved to Trash only after the replacement passes live Claude, Codex, relaunch, and packaged checks.
 
-**3. Register the entry:**
-```bash
-update-desktop-database ~/.local/share/applications/
-```
+## Development
 
-The widget should now appear in your application launcher. Test it by launching from your app menu before proceeding to autostart.
-
-**4. Autostart at login (optional):**
-```bash
-mkdir -p ~/.config/autostart
-cp ~/.local/share/applications/claude-usage-widget.desktop ~/.config/autostart/
-```
-
----
-
-### Build from Source
-
-**Prerequisites:**
-- Node.js 18+ ([Download](https://nodejs.org))
-- npm (comes with Node.js)
+Requirements: Node.js 18+ and npm 9+.
 
 ```bash
-git clone https://github.com/SlavomirDurej/claude-usage-widget.git
-cd claude-usage-widget
-npm install
+git clone https://github.com/jdventures222/ai-usage-widget.git
+cd ai-usage-widget
+npm ci
+npm test
+npm run lint
+npm run audit:runtime
 npm start
 ```
 
+If the shell has `ELECTRON_RUN_AS_NODE` set, remove it for a development launch:
 
----
-
-## Usage
-
-### First Launch
-
-1. Launch the widget
-2. Click "Login to Claude" when prompted
-3. A browser window will open — log in to your Claude.ai account
-4. The widget will automatically capture your session
-5. Usage data will start displaying immediately
-
-### Widget Controls
-
-- **Drag** — Click and drag the title bar to move the widget
-- **Refresh** — Click the refresh icon to update data immediately
-- **Graph** — Click the graph icon to toggle usage history
-- **Minimize** — Click the minus icon to hide to system tray / dock
-- **Close** — Click the X to Close the app
-
-### System Tray
-
-Right-click the tray icon for: Show/Hide, Refresh, Re-login, Settings, Exit.
-
-### Multi-Account Support (Advanced)
-
-Launch with `--profile=<name>` to run a fully isolated instance — its own session, cookies, and settings — so you can track two Claude accounts side by side without them interfering.
-
-Example: `claude-usage-widget --profile=work`
-
-This is a power-user feature, tested by us but not yet broadly validated by the community — if you hit issues, please open a GitHub Discussion.
-
----
-
-## Understanding the Display
-
-### Current Session & Weekly Limit
-
-| Column | Description |
-|--------|-------------|
-| Session Used | Progress bar showing usage from 0–100% |
-| Elapsed | Circular timer showing how far through the window you are |
-| Resets In | Countdown until the window resets |
-| Resets At | Actual local clock time / date when the window resets |
-
-**Color Coding:**
-- 🟣 Purple: Normal usage (below warning threshold, default 75%)
-- 🟠 Orange: High usage (above warning threshold)
-- 🔴 Red: Critical usage (above danger threshold, default 90%)
-
----
-
-## Privacy & Security
-
-- Credentials stored **locally only** using encrypted storage
-- No data sent to any third-party servers
-- Only communicates with the official Claude.ai API
-- Logout clears all session data, cookies, and Electron session storage
-
----
-
-## Troubleshooting
-
-**"Login Required" keeps appearing** — Session may have expired. Click "Login to Claude" to re-authenticate.
-
-**Widget not updating** — Check internet connection, click refresh manually, or try re-logging in from the tray menu.
-
-**Build errors** — Clean reinstall resolves most issues:
 ```bash
-rm -rf node_modules package-lock.json
-npm install
+env -u ELECTRON_RUN_AS_NODE npm start
 ```
 
-If issues persist, open a [Support discussion](../../discussions/categories/support) with your OS, Node.js version, and full error output.
+Build an Apple Silicon macOS bundle:
 
----
+```bash
+npm run build:mac:unpacked
+```
 
-## Roadmap
+## Distribution status
 
-- [x] macOS support
-- [x] Linux support
-- [x] Settings panel
-- [x] Remember window position
-- [x] Custom warning thresholds
-- [x] Configurable date & time formats
-- [x] Update notifications
-- [x] Usage alerts at thresholds
-- [x] Compact mode
-- [x] Usage history graph
-- [x] Currency support
-- [x] Organization/Teams support
-- [ ] Keyboard shortcuts
+Local development and packaged validation are supported. A broadly distributable macOS release requires a Developer ID Application certificate and Apple notarization credentials. Do not describe an unsigned or development-signed build as notarized.
 
----
+## Security and privacy
 
-## Contributors
+- No telemetry or hosted service.
+- No renderer networking.
+- No plaintext credential fallback.
+- No credential-bearing IPC or diagnostics.
+- Configuration permissions are hardened to owner read/write (`0600`) where supported.
+- Codex child execution uses constant arguments, `shell: false`, bounded output, a deadline, and forced cleanup.
+- Raw provider responses are never persisted.
 
-Special thanks to these contributors who have improved the widget:
+See [Product requirements](docs/PRD.md), [architecture](docs/ARCHITECTURE.md), and [threat model](docs/THREAT-MODEL.md).
+
+## Attribution
+
+AI Usage Widget is derived from [Claude Usage Widget](https://github.com/SlavomirDurej/claude-usage-widget) by Slavomir Durej under the MIT License. Upstream copyright and attribution are preserved in the license, package metadata, Git history, and [attribution notes](docs/ATTRIBUTION.md).
+
+Recent upstream contributors whose work is represented in the v1.7.6 baseline include:
 
 - [@cwil2072](https://github.com/cwil2072) - macOS minimize/restore fix, usage history graph
 - [@dion-jy](https://github.com/dion-jy) - Login flow architecture improvements
@@ -247,12 +105,6 @@ Special thanks to these contributors who have improved the widget:
 - [@gastyg](https://github.com/gastyg) - Fable row for compact mode
 - [@irishpolyglot](https://github.com/irishpolyglot) - Fable timer-pairing bug fix
 
----
-
 ## License
 
-This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
-
----
-
-*Built with Electron · [Releases](../../releases) · [Discussions](../../discussions)*
+MIT. See [LICENSE](LICENSE).

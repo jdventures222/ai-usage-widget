@@ -54,3 +54,6 @@ This file is tracked in the repo and visible to everyone.
 
 
 *Add new entries above this line as additional branches are staged.*
+# Historical upstream development notes
+
+> Retained for attribution and implementation context. This file is not the AI Usage Widget roadmap or current feature contract; see `docs/PRD.md`.

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AI Usage Widget">
+  <defs>
+    <linearGradient id="g" x1="14" y1="14" x2="114" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8b5cf6"/>
+      <stop offset=".52" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="30" fill="#10131d"/>
+  <path d="M34 78 50 38h12l16 40H66l-3-9H48l-3 9Zm18-20h8l-4-12Z" fill="url(#g)"/>
+  <path d="M82 39h12v39H82z" fill="url(#g)"/>
+  <circle cx="88" cy="91" r="7" fill="#22c55e"/>
+</svg>

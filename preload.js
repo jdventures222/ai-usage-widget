@@ -1,75 +1,29 @@
+'use strict';
+
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Allowed domains for openExternal — prevents renderer from opening arbitrary URLs
-const ALLOWED_EXTERNAL_DOMAINS = [
-  'claude.ai',
-  'github.com',
-  'paypal.me'
-];
-
-function isAllowedExternalUrl(url) {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== 'https:') return false;
-    return ALLOWED_EXTERNAL_DOMAINS.some(domain =>
-      parsed.hostname === domain || parsed.hostname.endsWith('.' + domain)
-    );
-  } catch {
-    return false;
-  }
-}
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  // Credentials management
-  getCredentials: () => ipcRenderer.invoke('get-credentials'),
-  saveCredentials: (credentials) => ipcRenderer.invoke('save-credentials', credentials),
-  deleteCredentials: () => ipcRenderer.invoke('delete-credentials'),
-  validateSessionKey: (sessionKey) => ipcRenderer.invoke('validate-session-key', sessionKey),
-  detectSessionKey: () => ipcRenderer.invoke('detect-session-key'),
-
-  // Window controls
-  minimizeWindow: () => ipcRenderer.send('minimize-window'),
-  closeWindow: () => ipcRenderer.send('close-window'),
-  resizeWindow: (height) => ipcRenderer.send('resize-window', height),
-
-  // Window position
-  getWindowPosition: () => ipcRenderer.invoke('get-window-position'),
-  setWindowPosition: (position) => ipcRenderer.invoke('set-window-position', position),
-
-  // Event listeners
-  onRefreshUsage: (callback) => {
-    ipcRenderer.on('refresh-usage', () => callback());
+contextBridge.exposeInMainWorld('usageWidget', Object.freeze({
+  getDashboard: () => ipcRenderer.invoke('dashboard:get'),
+  refreshProviders: (providerId) => ipcRenderer.invoke('providers:refresh', providerId),
+  connectClaude: () => ipcRenderer.invoke('claude:connect'),
+  disconnectClaude: () => ipcRenderer.invoke('claude:disconnect'),
+  getSettings: () => ipcRenderer.invoke('settings:get'),
+  saveSettings: (settings) => ipcRenderer.invoke('settings:save', settings),
+  chooseCodexExecutable: () => ipcRenderer.invoke('codex:choose-executable'),
+  copyDiagnostics: () => ipcRenderer.invoke('diagnostics:copy'),
+  openLink: (key) => ipcRenderer.invoke('link:open', key),
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+  closeWindow: () => ipcRenderer.send('window:close'),
+  setCompactMode: (compact) => ipcRenderer.invoke('window:set-mode', compact === true),
+  onSnapshotsUpdated: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('snapshots-updated', listener);
+    return () => ipcRenderer.removeListener('snapshots-updated', listener);
   },
-  onSessionExpired: (callback) => {
-    ipcRenderer.on('session-expired', () => callback());
+  onMigrationComplete: (callback) => {
+    const listener = (_event, payload) => callback(payload);
+    ipcRenderer.on('migration-complete', listener);
+    return () => ipcRenderer.removeListener('migration-complete', listener);
   },
-
-  // API
-  fetchUsageData: () => ipcRenderer.invoke('fetch-usage-data'),
-  getUsageHistory: () => ipcRenderer.invoke('get-usage-history'),
-  openExternal: (url) => {
-    if (isAllowedExternalUrl(url)) {
-      ipcRenderer.send('open-external', url);
-    } else {
-      console.warn('openExternal blocked — URL not in allowlist:', url);
-    }
-  },
-
-  // Platform
-  platform: process.platform,
-  isPortable: process.platform === 'win32' && !!process.env.PORTABLE_EXECUTABLE_FILE,
-
-  // Settings
-  getSettings: () => ipcRenderer.invoke('get-settings'),
-  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
-
-  // Updates
-  checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
-  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
-
-  // Notifications
-  showNotification: (title, body) => ipcRenderer.send('show-notification', { title, body }),
-
-  // Compact mode
-  setCompactMode: (compact) => ipcRenderer.send('set-compact-mode', compact)
-});
+  platform: process.platform
+}));

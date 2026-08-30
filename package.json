@@ -47,6 +47,17 @@
     "productName": "AI Usage Widget",
     "copyright": "Copyright © 2025 Slavomir Durej; modifications © 2026 James Han",
     "publish": null,
+    "asar": true,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "loadBrowserProcessSpecificV8Snapshot": false,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "win": {
       "target": [
         "nsis",
@@ -66,9 +77,14 @@
       "artifactName": "${productName}-${version}-win-Setup.${ext}"
     },
     "files": [
-      "**/*",
-      "!**/*.ts",
-      "!*.md"
+      "main.js",
+      "preload.js",
+      "package.json",
+      "src/**/*",
+      "assets/**/*",
+      "!assets/claude-logo.svg",
+      "!assets/claude-usage-screenshot.jpg",
+      "!assets/screenshot-*.png"
     ],
     "mac": {
       "target": [

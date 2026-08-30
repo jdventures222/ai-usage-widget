@@ -16,7 +16,7 @@ Electron main process
         +-- Versioned store -- normalized snapshots/history/settings only
 ```
 
-The renderer is an untrusted presentation surface. It cannot fetch remote content, launch commands, choose arbitrary URLs, or access credentials. Provider code and secret handling stay in the main process.
+The renderer is an untrusted presentation surface. It cannot fetch remote content, launch commands, choose arbitrary URLs, or access credentials. Provider code and secret handling stay in the main process. A standard, secure `ai-widget://dashboard` protocol serves only seven explicitly allowlisted packaged assets; it rejects all other hosts, paths, methods, and query strings without bypassing Content Security Policy.
 
 ## Provider contract
 

@@ -10,6 +10,7 @@ const {
   nativeImage,
   Notification,
   powerMonitor,
+  protocol,
   safeStorage,
   screen,
   session,
@@ -21,12 +22,16 @@ const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { pathToFileURL } = require('node:url');
 const Store = require('electron-store');
 const { ClaudeProvider } = require('./src/main/claude-provider');
 const { CodexProvider } = require('./src/main/codex-provider');
 const { discoverCodexExecutable } = require('./src/main/codex-client');
 const { ProviderManager } = require('./src/main/provider-manager');
+const {
+  DASHBOARD_URL,
+  registerDashboardHandler,
+  registerDashboardScheme
+} = require('./src/main/dashboard-protocol');
 const {
   DEFAULT_SETTINGS,
   SCHEMA_VERSION,
@@ -50,6 +55,8 @@ const ALLOWED_LINKS = Object.freeze({
   codexDocs: 'https://developers.openai.com/codex',
   source: 'https://github.com/jdventures222/ai-usage-widget'
 });
+
+registerDashboardScheme(protocol);
 
 const CREDENTIAL_HELPER_MODE = process.argv.includes('--credential-migration-helper=legacy');
 
@@ -402,7 +409,9 @@ function createMainWindow() {
     vibrancy: process.platform === 'darwin' ? 'hud' : undefined,
     visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
     title: APP_NAME,
-    icon: path.join(__dirname, process.platform === 'darwin' ? 'assets/icon.icns' : 'assets/logo.png'),
+    // macOS takes the application icon from the signed bundle; nativeImage
+    // cannot load the ICNS through an ASAR path for a BrowserWindow option.
+    ...(process.platform === 'darwin' ? {} : { icon: path.join(__dirname, 'assets/logo.png') }),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -433,7 +442,7 @@ function createMainWindow() {
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
-  mainWindow.loadFile(path.join(__dirname, 'src', 'renderer', 'index.html'));
+  mainWindow.loadURL(DASHBOARD_URL);
 }
 
 function createTray() {
@@ -580,9 +589,8 @@ function safeDiagnostics() {
 }
 
 function registerIpc() {
-  const dashboardUrl = pathToFileURL(path.join(__dirname, 'src', 'renderer', 'index.html')).toString();
   const assertDashboardSender = (event) => {
-    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents || event.senderFrame?.url !== dashboardUrl) {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents || event.senderFrame?.url !== DASHBOARD_URL) {
       throw new Error('untrusted_ipc_sender');
     }
   };
@@ -673,6 +681,7 @@ app.on('web-contents-created', (_event, contents) => {
 });
 
 app.whenReady().then(async () => {
+  await registerDashboardHandler(protocol, __dirname);
   const migration = migrateLegacyConfig({
     store,
     legacyPath: profileName

@@ -18,6 +18,10 @@ test('renderer remains sandboxed with no network or credential IPC', () => {
   assert.match(main, /untrusted_ipc_sender/);
   assert.match(main, /setPermissionRequestHandler/);
   assert.match(main, /setPermissionCheckHandler/);
+  assert.match(main, /registerDashboardScheme\(protocol\)/);
+  assert.match(main, /registerDashboardHandler\(protocol, __dirname\)/);
+  assert.match(main, /mainWindow\.loadURL\(DASHBOARD_URL\)/);
+  assert.doesNotMatch(main, /mainWindow\.loadFile\(/);
   assert.match(html, /connect-src 'none'/);
   assert.doesNotMatch(preload, /sessionKey|credential|auth\.json|cookie/i);
   assert.doesNotMatch(preload, /ipcRenderer\.send\([^)]*settings/);

@@ -127,6 +127,7 @@ Both subscription data sources are undocumented or experimental and can change w
 - Replaced the Claude-specific main process with the v2 provider manager.
 - Added a dedicated Claude browser partition and one-shot Codex execution.
 - Replaced credential IPC with narrow dashboard, settings, connection, picker, and diagnostics channels.
+- Replaced packaged `file://` dashboard loading with a secure, CSP-enforced custom protocol that exposes only an explicit local asset allowlist.
 - Added main-process refresh scheduling, sleep/wake refresh, threshold notifications, and a highest-utilization tray summary.
 - Added side-by-side application data and bundle identities.
 
@@ -152,7 +153,8 @@ Both subscription data sources are undocumented or experimental and can change w
 
 - Verified the Electron 41.10.7 arm64 runtime against Electron's published archive checksum before packaging.
 - Built a hardened-runtime, ad-hoc-signed arm64 app and DMG with ASAR integrity enforcement and disabled Node/CLI escape fuses.
-- Passed all 19 automated tests, syntax checks, dependency audits, deep code-signature verification, DMG verification, and mounted-image inspection.
+- Passed all 21 automated tests, syntax checks, dependency audits, deep code-signature verification, DMG verification, and mounted-image inspection.
 - Installed the 2.0.0 bundle under `com.jameshan.aiusagewidget`, confirmed both providers live, and confirmed that only the four approved bucket IDs exist in snapshots and history.
-- Confirmed the native packaged window preserves the owner's accepted `1423,967` position and `287×207` size across relaunch and live refresh.
+- Confirmed the native packaged window preserves user-selected geometry across relaunch and live refresh while retaining a recoverable draggable surface.
 - Moved the legacy application bundle to Trash only after replacement acceptance; preserved its configuration contents and hardened that file to owner-only permissions.
+- Corrected a packaged-only blank-window failure by serving the dashboard through the allowlisted custom protocol; verified rendered content and native drag/resize behavior in the rebuilt installed app.

@@ -11,7 +11,7 @@
 
 ### Renderer
 
-The renderer is treated as untrusted. Node integration and renderer networking are disabled. Preload exposes only fixed IPC methods. Provider responses are normalized and stripped of credentials before crossing IPC.
+The renderer is treated as untrusted. Node integration and renderer networking are disabled. Preload exposes only fixed IPC methods. Provider responses are normalized and stripped of credentials before crossing IPC. The dashboard uses a secure custom protocol instead of `file://`; the main process serves only a fixed asset allowlist and leaves CSP enforcement enabled.
 
 ### Claude remote content
 

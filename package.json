@@ -1,25 +1,33 @@
 {
-  "name": "claude-usage-widget",
-  "version": "1.7.6",
-  "description": "Desktop widget for Claude.ai usage monitoring",
+  "name": "ai-usage-widget",
+  "version": "2.0.0",
+  "description": "Private desktop widget for Claude and Codex subscription usage",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test test/**/*.test.js",
+    "test:watch": "node --test --watch test/**/*.test.js",
+    "lint": "node scripts/check-syntax.js",
+    "audit:runtime": "npm audit --omit=dev --audit-level=high",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "dev": "cross-env NODE_ENV=development electron .",
-    "build:mac": "electron-builder --mac",
+    "build:mac": "electron-builder --mac dmg --arm64",
+    "build:mac:unpacked": "electron-builder --mac dir --arm64",
+    "build:mac:universal": "electron-builder --mac dmg --universal",
     "build:linux": "electron-builder --linux"
   },
   "keywords": [
     "claude",
+    "codex",
+    "openai",
     "usage",
     "widget",
     "electron"
   ],
-  "author": "Slavomir Durej",
+  "author": "James Han; based on Claude Usage Widget by Slavomir Durej",
   "license": "MIT",
-  "copyright": "Copyright © 2025 Slavomir Durej",
+  "copyright": "Copyright © 2025 Slavomir Durej; modifications © 2026 James Han",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
@@ -27,7 +35,7 @@
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
     "cross-env": "^7.0.3",
-    "electron": "^41.10.1",
+    "electron": "41.10.7",
     "electron-builder": "^26.15.3"
   },
   "dependencies": {
@@ -35,9 +43,9 @@
     "electron-store": "^8.1.0"
   },
   "build": {
-    "appId": "com.claudeusage.widget",
-    "productName": "Claude-Usage-Widget",
-    "copyright": "Copyright © 2025 Slavomir Durej",
+    "appId": "com.jameshan.aiusagewidget",
+    "productName": "AI Usage Widget",
+    "copyright": "Copyright © 2025 Slavomir Durej; modifications © 2026 James Han",
     "publish": null,
     "win": {
       "target": [
@@ -48,7 +56,7 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-win-portable.${ext}",
-      "unpackDirName": "claude-usage-widget"
+      "unpackDirName": "ai-usage-widget"
     },
     "nsis": {
       "oneClick": false,
@@ -73,13 +81,14 @@
         }
       ],
       "icon": "assets/icon.icns",
+      "category": "public.app-category.utilities",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": true,
+      "notarize": false,
       "extendInfo": {
-        "NSHumanReadableCopyright": "Copyright © 2025 Slavomir Durej"
+        "NSHumanReadableCopyright": "Copyright © 2025 Slavomir Durej; modifications © 2026 James Han"
       }
     },
     "dmg": {

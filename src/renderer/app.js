@@ -58,6 +58,7 @@ async function initialize() {
     render();
   } catch {
     elements.providerList.replaceChildren(createStateMessage('The application could not load its local dashboard.'));
+    fitWindow();
   }
 
   setInterval(updateRelativeTimes, 1000);
@@ -107,6 +108,24 @@ function render() {
   renderProviders();
   renderHistory();
   updateLastUpdated();
+  fitWindow();
+}
+
+// Measured synchronously after each change: a hidden window gets no frames,
+// so a ResizeObserver would only resize the panel after it is already shown.
+function fitWindow() {
+  const shell = elements.windowShell;
+  const border = shell.offsetHeight - shell.clientHeight;
+  let height = border + elements.mainScroll.offsetTop + elements.mainScroll.scrollHeight;
+  if (!elements.settingsModal.hidden) {
+    const panel = elements.settingsModal.firstElementChild;
+    let settingsHeight = border + elements.settingsModal.offsetHeight - panel.clientHeight;
+    for (const child of panel.children) {
+      settingsHeight += child.classList.contains('settings-scroll') ? child.scrollHeight : child.offsetHeight;
+    }
+    height = Math.max(height, settingsHeight);
+  }
+  api.fitContent(height);
 }
 
 function claudeSnapshot() {
@@ -401,6 +420,7 @@ async function disconnectClaude() {
 function openSettings() {
   populateSettings();
   elements.settingsModal.hidden = false;
+  fitWindow();
   elements.saveSettingsButton.focus();
 }
 
@@ -508,7 +528,11 @@ function cssValue(name) {
 function showMigration(message) {
   elements.migrationBanner.textContent = message;
   elements.migrationBanner.hidden = false;
-  setTimeout(() => { elements.migrationBanner.hidden = true; }, 9000);
+  fitWindow();
+  setTimeout(() => {
+    elements.migrationBanner.hidden = true;
+    fitWindow();
+  }, 9000);
 }
 
 function showToast(message, error = false) {

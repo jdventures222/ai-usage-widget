@@ -41,7 +41,9 @@ const { fetchMultipleViaWindow } = require('./src/fetch-via-window');
 
 const APP_NAME = 'AI Usage Widget';
 const APP_ID = 'com.jameshan.aiusagewidget';
+// The panel is as tall as its content, up to the maximum height here.
 const POPOVER_SIZE = Object.freeze({ width: 400, height: 600 });
+const POPOVER_MIN_HEIGHT = 120;
 // A click on the tray icon blurs the open panel before the click arrives, so a
 // hide this recent means the click was meant to close it.
 const BLUR_CLICK_GRACE_MS = 300;
@@ -125,6 +127,7 @@ let refreshTimer = null;
 let isQuitting = false;
 let refreshPromise = null;
 let lastBlurHideAt = 0;
+let popoverHeight = POPOVER_SIZE.height;
 
 function legacyConfigPath() {
   if (process.platform === 'darwin') {
@@ -248,7 +251,8 @@ function positionPopover() {
   const display = trayBounds && trayBounds.width > 0
     ? screen.getDisplayMatching(trayBounds)
     : screen.getPrimaryDisplay();
-  mainWindow.setBounds(popoverBounds(trayBounds, display.workArea, POPOVER_SIZE), false);
+  const size = { width: POPOVER_SIZE.width, height: popoverHeight };
+  mainWindow.setBounds(popoverBounds(trayBounds, display.workArea, size), false);
 }
 
 function showMainWindow() {
@@ -511,6 +515,11 @@ function registerIpc() {
     return true;
   });
   on('window:close', () => mainWindow?.hide());
+  on('window:fit-content', (height) => {
+    if (!Number.isFinite(height)) return;
+    popoverHeight = Math.round(Math.min(Math.max(height, POPOVER_MIN_HEIGHT), POPOVER_SIZE.height));
+    if (mainWindow && !mainWindow.isDestroyed()) positionPopover();
+  });
 }
 
 function denySessionPermissions(browserSession) {

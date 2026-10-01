@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('usageWidget', Object.freeze({
   copyDiagnostics: () => ipcRenderer.invoke('diagnostics:copy'),
   openLink: (key) => ipcRenderer.invoke('link:open', key),
   closeWindow: () => ipcRenderer.send('window:close'),
+  fitContent: (height) => ipcRenderer.send('window:fit-content', height),
   onSnapshotsUpdated: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('snapshots-updated', listener);

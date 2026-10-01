@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "src/renderer/styles.css"
+        ],
+        "createdAt": "2026-10-01T02:07:02.608Z",
+        "reason": "Claude: .progress-fill width transition is a progress bar's literal fill motion, one small element that animates only when usage changes (refresh every 5 min); from 311dacf, predates the panel-fit work"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/renderer/styles.css"
+        ],
+        "createdAt": "2026-10-01T02:07:40.628Z",
+        "reason": "user confirmed: James said 'Keep' (2026-09-30 about 7:10 PM PT) to the 3px purple left stripe on .provider-card::before"
+      }
+    ]
+  }
+}

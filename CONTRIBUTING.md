@@ -14,12 +14,12 @@ Run a packaged smoke check for changes to Electron, provider transport, storage,
 
 ## Product invariants
 
-- The compact HUD has one Codex summary and exactly three Claude rows: 5-hour, weekly, and Fable.
-- GPT Reserve, Codex Spark, other Claude scoped limits, spend, and credits never reach display or history.
+- The Claude account shows exactly three limits: 5-hour, weekly, and Fable.
+- Other Claude scoped limits, spend, and credits never reach display or history.
 - Raw provider responses and credentials never reach the renderer or history.
-- Codex authentication files are never read.
-- Provider failures remain isolated.
-- Manual compact and expanded geometry survives relaunch and refresh never changes it.
+- Claude Code's own credentials are never read.
+- Disconnect and any failed sign-in wipe the whole isolated sign-in partition plus the encrypted key.
+- A refresh never runs during a sign-in and never overwrites or deletes a new login.
 - The renderer stays sandboxed with networking disabled.
 
 ## Provider fixtures

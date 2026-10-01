@@ -14,13 +14,13 @@ class MemoryStore {
 test('provider failures are isolated and successful history still records', async () => {
   const store = new MemoryStore();
   const ready = {
-    id: 'codex',
-    name: 'Codex',
+    id: 'example',
+    name: 'Example',
     cacheTtlMs: 1000,
-    fetchSnapshot: async () => createSnapshot('codex', {
-      providerName: 'Codex',
+    fetchSnapshot: async () => createSnapshot('example', {
+      providerName: 'Example',
       status: 'ready',
-      buckets: [{ id: 'codex:primary:10080', label: 'Codex', usedPercent: 7 }]
+      buckets: [{ id: 'claude:all-models:secondary:10080', label: 'All models', usedPercent: 7 }]
     }),
     dispose() {}
   };
@@ -34,31 +34,34 @@ test('provider failures are isolated and successful history still records', asyn
   const manager = new ProviderManager({
     providers: [ready, failed],
     store,
-    getSettings: () => ({ enabledProviders: { codex: true, claude: true } })
+    getSettings: () => ({ enabledProviders: { example: true, claude: true } })
   });
 
   const snapshots = await manager.refresh({ force: true });
-  assert.equal(snapshots.codex.status, 'ready');
+  assert.equal(snapshots.example.status, 'ready');
   assert.equal(snapshots.claude.status, 'error');
   assert.equal(snapshots.claude.error.code, 'claude_provider_failed');
   assert.equal(JSON.stringify(snapshots).includes('private failure detail'), false);
-  assert.deepEqual(store.get('usageHistoryV2')[0].buckets, { 'codex:primary:10080': 7 });
+  const history = store.get('usageHistoryV2');
+  assert.equal(history.length, 1);
+  assert.equal(history[0].providerId, 'example');
+  assert.deepEqual(history[0].buckets, { 'claude:all-models:secondary:10080': 7 });
 });
 
 test('disabled providers do not execute', async () => {
   let calls = 0;
   const provider = {
-    id: 'codex',
-    name: 'Codex',
+    id: 'example',
+    name: 'Example',
     fetchSnapshot: async () => { calls += 1; },
     dispose() {}
   };
   const manager = new ProviderManager({
     providers: [provider],
     store: new MemoryStore(),
-    getSettings: () => ({ enabledProviders: { codex: false } })
+    getSettings: () => ({ enabledProviders: { example: false } })
   });
   const snapshots = await manager.refresh({ force: true });
   assert.equal(calls, 0);
-  assert.equal(snapshots.codex.status, 'disabled');
+  assert.equal(snapshots.example.status, 'disabled');
 });

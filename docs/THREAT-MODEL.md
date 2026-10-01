@@ -5,7 +5,6 @@
 - Claude session cookie.
 - Provider organization/account identifiers.
 - Usage history and plan information.
-- Local executable paths.
 
 ## Trust boundaries
 
@@ -15,11 +14,11 @@ The renderer is treated as untrusted. Node integration and renderer networking a
 
 ### Claude remote content
 
-Remote Claude pages load only in dedicated sandboxed BrowserWindows with no preload. Navigation and login domains are allowlisted. Hidden data fetch windows accept only HTTPS Claude API URLs.
+Remote Claude pages load only in dedicated sandboxed BrowserWindows with no preload. The session uses an isolated persistent partition. Disconnect and any failed sign-in wipe the whole partition (all cookies and storage, including Google/Apple/Microsoft sign-in cookies) plus the encrypted key. Electron cookie encryption is enabled (`enableCookieEncryption` fuse). Navigation and login domains are allowlisted. Hidden data fetch windows accept only HTTPS Claude API URLs.
 
-### Codex child process
+### Safari cookie import
 
-Only a resolved executable selected by discovery or the native file picker is launched. Arguments are constant, shell invocation is disabled, stdout/stderr are bounded, JSON is shape-checked, and a deadline forces cleanup.
+On macOS, "Connect from Safari" reads the claude.ai `sessionKey` cookie from Safari's `Cookies.binarycookies`, which needs Full Disk Access. Only the installed (packaged) app reads Safari. A development run (`npm start`) uses the embedded sign-in window, so Full Disk Access is never granted to the stock Electron binary. The reader refuses a cookie store that is not a regular file or is over 32 MB and skips other sites' cookies without decoding them. Claude Code's own credentials (`~/.claude/.credentials.json` and the "Claude Code-credentials" keychain items) are never read.
 
 ### Local storage
 
@@ -29,8 +28,8 @@ The old and new macOS app names use different `safeStorage` Keychain identities.
 
 ## Logging policy
 
-Normal operation logs only stable error codes. Debug diagnostics may include app, OS, Electron, and CLI versions plus resolved capability states. They may not include tokens, cookies, email addresses, organization IDs, complete provider payloads, or stderr beyond a sanitized bounded summary.
+Normal operation logs only stable error codes. Debug diagnostics may include app, OS, and Electron versions plus resolved capability states. They may not include tokens, cookies, email addresses, organization IDs, complete provider payloads, or stderr beyond a sanitized bounded summary.
 
 ## Residual risk
 
-The private Claude endpoint and experimental Codex app-server interface can change. A malicious replacement `codex` executable chosen by the user would execute with the user's permissions; native file selection, realpath resolution, executable checks, and visible diagnostics reduce accidental selection but cannot make an untrusted executable safe.
+The private Claude endpoint can change.

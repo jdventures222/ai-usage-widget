@@ -18,14 +18,13 @@ Install the verified bundle at:
 /Applications/AI Usage Widget.app
 ```
 
-Launch it from Finder once so macOS registers the application identity and login item. The app starts in compact mode and restores the last saved position and size.
+Launch it from Finder once so macOS registers the application identity and login item. The app runs from the menu bar with no Dock icon.
 
 ## Account prerequisites
 
-- Codex CLI installed and authenticated with the intended ChatGPT/Codex account.
-- Claude account authenticated either through legacy migration or the app's dedicated Claude sign-in window.
+- One Claude subscription account. On macOS the installed app connects through Safari's current claude.ai login (needs Full Disk Access). A development run (`npm start`) and Windows/Linux use the app's embedded sign-in window. An existing login also carries over through legacy migration.
 
-No OpenAI API key or Anthropic API key is used.
+No Anthropic API key is used.
 
 ## Migration
 
@@ -41,7 +40,7 @@ The replacement writes to:
 ~/Library/Application Support/ai-usage-widget/config.json
 ```
 
-Keep the legacy config as rollback data. Move the old app bundle to Trash only after the packaged replacement reports both providers live and survives relaunch.
+Keep the legacy config as rollback data. Move the old app bundle to Trash only after the packaged replacement reports Claude live and survives relaunch.
 
 ## Signing limitation
 
@@ -49,4 +48,4 @@ A local or development-signed app can be installed on this Mac. Public distribut
 
 ## Uninstall
 
-Quit AI Usage Widget, move `/Applications/AI Usage Widget.app` to Trash, and optionally archive or remove its application-support directory. Removing the app bundle does not delete account data or revoke either provider account.
+Quit AI Usage Widget, move `/Applications/AI Usage Widget.app` to Trash, and optionally archive or remove its application-support directory. Removing the app bundle does not delete account data or revoke the Claude account.

@@ -6,9 +6,14 @@ const {
   safeText
 } = require('../shared/provider-contract');
 const { normalizeClaudeUsage } = require('./claude-normalizer');
+const { isPlausibleSessionKey, readSafariCookieValue } = require('./safari-cookies');
 
 const CLAUDE_ORIGIN = 'https://claude.ai';
+const CLAUDE_LOGIN_URL = `${CLAUDE_ORIGIN}/login`;
+const FULL_DISK_ACCESS_URL =
+  'x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles';
 const LOGIN_TIMEOUT_MS = 5 * 60 * 1000;
+const NAVIGATION_ABORTED = -3;
 
 class ClaudeProvider {
   constructor(options) {
@@ -20,8 +25,15 @@ class ClaudeProvider {
     this.BrowserWindow = options.BrowserWindow;
     this.browserSession = options.browserSession;
     this.fetchMultipleViaWindow = options.fetchMultipleViaWindow;
-    this.mainWindow = options.mainWindow;
+    this.platform = options.platform || process.platform;
+    // An unpackaged run is the stock Electron binary, which must never be the
+    // app the user grants Full Disk Access to.
+    this.safariImportAvailable = options.safariImportAvailable !== false;
+    this.openExternal = options.openExternal || (() => {});
+    this.openInSafari = options.openInSafari || this.openExternal;
+    this.readSafariCookie = options.readSafariCookie || readSafariCookieValue;
     this.loginWindow = null;
+    this.connecting = false;
   }
 
   getCredential() {
@@ -41,6 +53,20 @@ class ClaudeProvider {
     const encrypted = this.safeStorage.encryptString(sessionKey);
     this.store.set('claude.sessionKeyEncrypted', encrypted.toString('base64'));
     this.store.delete('claude.sessionKey');
+  }
+
+  async forgetSession() {
+    this.store.delete('claude.sessionKeyEncrypted');
+    this.store.delete('claude.organizationId');
+    this.store.delete('claude.organizationName');
+    await this.clearPartition();
+  }
+
+  // The partition exists only for this widget, so wiping all of it also
+  // removes identity-provider sessions left by a Google or Apple sign-in.
+  async clearPartition() {
+    try { await this.browserSession.clearStorageData(); } catch {}
+    try { await this.browserSession.clearAuthCache(); } catch {}
   }
 
   async setSessionCookie(sessionKey) {
@@ -83,7 +109,21 @@ class ClaudeProvider {
     return organizationId;
   }
 
+  connectingSnapshot(previous) {
+    return createUnavailableSnapshot(this.id, this.name, 'loading', 'claude_connecting', previous);
+  }
+
+  // A refresh that overlaps a connect started with a credential that is no
+  // longer the stored one, so neither its result nor its failure may apply.
+  credentialChangedSince(encrypted) {
+    return this.connecting || this.store.get('claude.sessionKeyEncrypted') !== encrypted;
+  }
+
   async fetchSnapshot({ previous } = {}) {
+    // A refresh during sign-in would rewrite the sessionKey cookie the login
+    // window is waiting for.
+    if (this.connecting) return this.connectingSnapshot(previous);
+    const encrypted = this.store.get('claude.sessionKeyEncrypted');
     const sessionKey = this.getCredential();
     if (!sessionKey) {
       return createUnavailableSnapshot(this.id, this.name, 'unauthenticated', 'claude_login_required', previous);
@@ -100,12 +140,14 @@ class ClaudeProvider {
         }
       );
       if (!results[0]?.ok) throw results[0]?.error || new Error('usage_fetch_failed');
+      if (this.credentialChangedSince(encrypted)) return this.connectingSnapshot(previous);
       return normalizeClaudeUsage(
         results[0].value,
         {},
         { organizationName: this.store.get('claude.organizationName') }
       );
     } catch (error) {
+      if (this.credentialChangedSince(encrypted)) return this.connectingSnapshot(previous);
       const message = String(error?.message || 'claude_unknown_error');
       const sessionFailure = /Cloudflare|UnexpectedHTML|401|403|session/i.test(message);
       if (sessionFailure) {
@@ -126,11 +168,70 @@ class ClaudeProvider {
     if (!this.safeStorage.isEncryptionAvailable()) {
       return { success: false, error: 'secure_storage_unavailable' };
     }
-    if (this.loginWindow && !this.loginWindow.isDestroyed()) {
-      this.loginWindow.focus();
+    if (this.connecting) {
+      if (this.loginWindow && !this.loginWindow.isDestroyed()) this.loginWindow.focus();
       return { success: false, error: 'login_already_open' };
     }
+    this.connecting = true;
+    try {
+      // Safari is the only browser whose cookie jar we can read, so every
+      // other platform, and a development run, signs in through a window.
+      if (this.platform === 'darwin' && this.safariImportAvailable) return await this.connectViaSafari();
+      return await this.connectViaLoginWindow();
+    } finally {
+      this.connecting = false;
+    }
+  }
 
+  async connectViaSafari() {
+    const cookie = this.readSafariCookie({ name: 'sessionKey', domain: 'claude.ai' });
+    if (!cookie.ok) {
+      if (cookie.reason === 'permission_denied') {
+        this.openExternal(FULL_DISK_ACCESS_URL);
+        return { success: false, error: 'safari_access_denied' };
+      }
+      this.openInSafari(CLAUDE_LOGIN_URL);
+      return { success: false, error: 'safari_login_required' };
+    }
+    if (!isPlausibleSessionKey(cookie.value)) {
+      this.openInSafari(CLAUDE_LOGIN_URL);
+      return { success: false, error: 'safari_login_required' };
+    }
+
+    try {
+      await this.adoptSessionKey(cookie.value);
+      return {
+        success: true,
+        organizationName: this.store.get('claude.organizationName') || null
+      };
+    } catch {
+      await this.forgetSession();
+      return { success: false, error: 'claude_login_validation_failed' };
+    }
+  }
+
+  /**
+   * Adopts a session that belongs to a possibly different account, so the
+   * previous account's cookies and cached organization must go first — a stale
+   * organizationId would otherwise be queried with the new credential.
+   */
+  async adoptSessionKey(sessionKey) {
+    await this.clearBrowserCookies();
+    this.store.delete('claude.organizationId');
+    this.store.delete('claude.organizationName');
+    this.saveCredential(sessionKey);
+    await this.setSessionCookie(sessionKey);
+    await this.discoverOrganization();
+  }
+
+  async clearBrowserCookies() {
+    const cookies = await this.browserSession.cookies.get({ domain: 'claude.ai' });
+    for (const cookie of cookies) {
+      try { await this.browserSession.cookies.remove(CLAUDE_ORIGIN, cookie.name); } catch {}
+    }
+  }
+
+  async connectViaLoginWindow() {
     try { await this.browserSession.cookies.remove(CLAUDE_ORIGIN, 'sessionKey'); } catch {}
 
     return new Promise((resolve) => {
@@ -152,11 +253,12 @@ class ClaudeProvider {
         resolve(result);
       };
 
+      // No parent window: the menu bar panel hides when it loses focus, and an
+      // attached child would be hidden along with it.
       this.loginWindow = new this.BrowserWindow({
         width: 1000,
         height: 720,
-        title: 'Claude sign in — claude.ai',
-        parent: this.mainWindow?.() || undefined,
+        title: 'Claude sign in · claude.ai',
         modal: false,
         webPreferences: {
           nodeIntegration: false,
@@ -179,25 +281,29 @@ class ClaudeProvider {
 
       this.loginWindow.webContents.on('will-navigate', (event, url) => {
         if (!isAllowed(url)) event.preventDefault();
-        else this.loginWindow?.setTitle(`Claude sign in — ${new URL(url).hostname}`);
+        else this.loginWindow?.setTitle(`Claude sign in · ${new URL(url).hostname}`);
       });
       this.loginWindow.webContents.setWindowOpenHandler(({ url }) => {
         if (isAllowed(url)) {
-          this.loginWindow?.loadURL(url);
+          this.loginWindow?.loadURL(url).catch(() => {});
         }
         return { action: 'deny' };
       });
 
       const cookieListener = async (_event, cookie, _cause, removed) => {
-        if (captured || removed || cookie.name !== 'sessionKey' || !cookie.domain.includes('claude.ai') || !cookie.value) return;
+        const claudeDomain = cookie.domain === 'claude.ai' || cookie.domain === '.claude.ai';
+        if (captured || removed || cookie.name !== 'sessionKey' || !claudeDomain || !cookie.value) return;
         captured = true;
         try {
           this.saveCredential(cookie.value);
           await this.setSessionCookie(cookie.value);
           await this.discoverOrganization();
-          finish({ success: true });
+          finish({
+            success: true,
+            organizationName: this.store.get('claude.organizationName') || null
+          });
         } catch {
-          this.store.delete('claude.sessionKeyEncrypted');
+          await this.forgetSession();
           finish({ success: false, error: 'claude_login_validation_failed' });
         }
       };
@@ -206,13 +312,15 @@ class ClaudeProvider {
       this.loginWindow.on('closed', () => {
         if (!settled) finish({ success: false, error: 'login_window_closed' });
       });
-      this.loginWindow.webContents.on('did-fail-load', () => {
-        if (!settled) finish({ success: false, error: 'login_page_failed' });
+      this.loginWindow.webContents.on('did-fail-load', (_event, errorCode, _description, _url, isMainFrame) => {
+        if (!settled && isMainFrame && errorCode !== NAVIGATION_ABORTED) {
+          finish({ success: false, error: 'login_page_failed' });
+        }
       });
 
       const timeout = setTimeout(() => finish({ success: false, error: 'login_timeout' }), LOGIN_TIMEOUT_MS);
       timeout.unref?.();
-      this.loginWindow.loadURL(`${CLAUDE_ORIGIN}/login`);
+      this.loginWindow.loadURL(`${CLAUDE_ORIGIN}/login`).catch(() => {});
     });
   }
 
@@ -221,11 +329,7 @@ class ClaudeProvider {
     this.store.delete('claude.sessionKey');
     this.store.delete('claude.organizationId');
     this.store.delete('claude.organizationName');
-    const cookies = await this.browserSession.cookies.get({ domain: 'claude.ai' });
-    for (const cookie of cookies) {
-      try { await this.browserSession.cookies.remove(CLAUDE_ORIGIN, cookie.name); } catch {}
-    }
-    await this.browserSession.clearStorageData({ origin: CLAUDE_ORIGIN });
+    await this.clearPartition();
     return true;
   }
 

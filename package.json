@@ -1,7 +1,7 @@
 {
   "name": "ai-usage-widget",
-  "version": "2.0.0",
-  "description": "Private desktop widget for Claude and Codex subscription usage",
+  "version": "2.1.0",
+  "description": "Private menu bar widget for Claude subscription usage",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -19,8 +19,6 @@
   },
   "keywords": [
     "claude",
-    "codex",
-    "openai",
     "usage",
     "widget",
     "electron"
@@ -50,7 +48,7 @@
     "asar": true,
     "electronFuses": {
       "runAsNode": false,
-      "enableCookieEncryption": false,
+      "enableCookieEncryption": true,
       "enableNodeOptionsEnvironmentVariable": false,
       "enableNodeCliInspectArguments": false,
       "enableEmbeddedAsarIntegrityValidation": true,
@@ -104,6 +102,7 @@
       "entitlementsInherit": "build/entitlements.mac.plist",
       "notarize": false,
       "extendInfo": {
+        "LSUIElement": true,
         "NSHumanReadableCopyright": "Copyright © 2025 Slavomir Durej; modifications © 2026 James Han"
       }
     },

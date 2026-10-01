@@ -5,32 +5,19 @@ const fs = require('node:fs');
 const SCHEMA_VERSION = 2;
 const HISTORY_RETENTION_MS = 8 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_SAMPLES = 10000;
-const HUD_POLICY_VERSION = 1;
 
 const DEFAULT_SETTINGS = Object.freeze({
-  enabledProviders: { claude: true, codex: true },
   autoStart: true,
-  minimizeToTray: true,
-  alwaysOnTop: true,
-  allSpaces: true,
-  widgetCorner: 'top-right',
-  hudOpacity: 0.92,
   theme: 'dark',
   warnThreshold: 75,
   dangerThreshold: 90,
   usageAlerts: true,
   refreshInterval: 300,
-  showHistory: false,
-  codexExecutable: ''
+  showHistory: false
 });
 
 function integerInRange(value, fallback, min, max) {
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
-}
-
-function numberInRange(value, fallback, min, max) {
-  const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : fallback;
 }
 
@@ -43,31 +30,14 @@ function sanitizeSettings(input = {}) {
   const refreshCandidate = integerInRange(source.refreshInterval, DEFAULT_SETTINGS.refreshInterval, 60, 900);
   const refreshInterval = refreshAllowed.includes(refreshCandidate) ? refreshCandidate : DEFAULT_SETTINGS.refreshInterval;
   const theme = ['dark', 'light', 'system'].includes(source.theme) ? source.theme : DEFAULT_SETTINGS.theme;
-  const corners = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
-  const widgetCorner = corners.includes(source.widgetCorner) ? source.widgetCorner : DEFAULT_SETTINGS.widgetCorner;
-  const enabled = source.enabledProviders && typeof source.enabledProviders === 'object'
-    ? source.enabledProviders
-    : {};
   return {
-    enabledProviders: {
-      claude: enabled.claude !== false,
-      codex: enabled.codex !== false
-    },
     autoStart: source.autoStart !== false,
-    minimizeToTray: source.minimizeToTray !== false,
-    alwaysOnTop: source.alwaysOnTop !== false,
-    allSpaces: source.allSpaces !== false,
-    widgetCorner,
-    hudOpacity: numberInRange(source.hudOpacity, DEFAULT_SETTINGS.hudOpacity, 0.7, 1),
     theme,
     warnThreshold,
     dangerThreshold,
     usageAlerts: source.usageAlerts !== false,
     refreshInterval,
-    showHistory: source.showHistory === true || source.graphVisible === true,
-    codexExecutable: typeof source.codexExecutable === 'string' && source.codexExecutable.length < 4096
-      ? source.codexExecutable
-      : ''
+    showHistory: source.showHistory === true || source.graphVisible === true
   };
 }
 
@@ -153,22 +123,6 @@ function migrateLegacyConfig({ store, legacyPath, safeStorage, fsImpl = fs }) {
   return { migrated: true, credentialMigrated, historySamples: history.length };
 }
 
-function applyPersistentHudDefaults(store, fsImpl = fs) {
-  if (store.get('migration.hudPolicyVersion', 0) >= HUD_POLICY_VERSION) return false;
-  store.set('settings', sanitizeSettings({
-    ...store.get('settings', {}),
-    autoStart: true,
-    minimizeToTray: true,
-    alwaysOnTop: true,
-    allSpaces: true,
-    widgetCorner: 'top-right',
-    hudOpacity: 0.92
-  }));
-  store.set('migration.hudPolicyVersion', HUD_POLICY_VERSION);
-  hardenStorePermissions(store, fsImpl);
-  return true;
-}
-
 function hardenStorePermissions(store, fsImpl = fs) {
   if (process.platform === 'win32' || !store?.path) return;
   try { fsImpl.chmodSync(store.path, 0o600); } catch {}
@@ -185,10 +139,8 @@ function pruneHistory(history, now = Date.now()) {
 module.exports = {
   DEFAULT_SETTINGS,
   HISTORY_RETENTION_MS,
-  HUD_POLICY_VERSION,
   MAX_HISTORY_SAMPLES,
   SCHEMA_VERSION,
-  applyPersistentHudDefaults,
   convertLegacyHistory,
   hardenStorePermissions,
   migrateLegacyConfig,

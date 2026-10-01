@@ -27,17 +27,16 @@ test('renderer remains sandboxed with no network or credential IPC', () => {
   assert.doesNotMatch(preload, /ipcRenderer\.send\([^)]*settings/);
 });
 
-test('Codex authentication files are never read by application source', () => {
+test('Claude Code credentials are never read by application source', () => {
   const sourceFiles = [
     'main.js',
     'preload.js',
-    'src/main/codex-client.js',
-    'src/main/codex-provider.js',
-    'src/main/provider-manager.js'
+    'src/main/claude-provider.js',
+    'src/main/provider-manager.js',
+    'src/main/safari-cookies.js'
   ];
   const source = sourceFiles.map(read).join('\n');
-  assert.doesNotMatch(source, /auth\.json|\.codex[\\/]auth|OPENAI_API_KEY/);
-  assert.match(read('src/main/codex-client.js'), /shell:\s*false/);
+  assert.doesNotMatch(source, /\.credentials\.json|Claude Code-credentials|ANTHROPIC_API_KEY/);
 });
 
 test('product policy excludes disallowed usage labels from the renderer', () => {
@@ -47,15 +46,14 @@ test('product policy excludes disallowed usage labels from the renderer', () => 
   }
 });
 
-test('HUD uses supported native movement and resizing with separate saved bounds', () => {
+test('usage lives in the menu bar with a panel that hides when it loses focus', () => {
   const main = read('main.js');
-  const styles = read('src/renderer/styles.css');
-  assert.match(main, /resizable:\s*true/);
-  assert.match(main, /movable:\s*true/);
-  assert.match(main, /transparent:\s*false/);
-  assert.match(main, /windowBoundsV2\.\$\{mode\}/);
-  assert.match(main, /visibleHeight = Math\.min\(32, height\)/);
-  assert.match(main, /showInactive\(\);\s*mainWindow\.setBounds\(initial, false\)/);
-  assert.doesNotMatch(main, /ipcMain\.on\('window:resize'/);
-  assert.match(styles, /-webkit-app-region:\s*drag/);
+  assert.match(main, /resizable:\s*false/);
+  assert.match(main, /movable:\s*false/);
+  assert.match(main, /show:\s*false/);
+  assert.match(main, /mainWindow\.on\('blur'/);
+  assert.match(main, /tray\.setTitle\(/);
+  assert.match(main, /tray\.on\('click', togglePopover\)/);
+  assert.doesNotMatch(main, /windowBoundsV2|window:set-mode|setOpacity/);
+  assert.doesNotMatch(read('src/renderer/styles.css'), /-webkit-app-region:\s*drag/);
 });

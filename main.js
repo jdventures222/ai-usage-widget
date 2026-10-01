@@ -4,7 +4,6 @@ const {
   app,
   BrowserWindow,
   clipboard,
-  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -24,8 +23,7 @@ const os = require('node:os');
 const path = require('node:path');
 const Store = require('electron-store');
 const { ClaudeProvider } = require('./src/main/claude-provider');
-const { CodexProvider } = require('./src/main/codex-provider');
-const { discoverCodexExecutable } = require('./src/main/codex-client');
+const { formatMenuBarTitle, highestUsage, popoverBounds } = require('./src/main/menu-bar');
 const { ProviderManager } = require('./src/main/provider-manager');
 const {
   DASHBOARD_URL,
@@ -35,7 +33,6 @@ const {
 const {
   DEFAULT_SETTINGS,
   SCHEMA_VERSION,
-  applyPersistentHudDefaults,
   hardenStorePermissions,
   migrateLegacyConfig,
   sanitizeSettings
@@ -44,15 +41,13 @@ const { fetchMultipleViaWindow } = require('./src/fetch-via-window');
 
 const APP_NAME = 'AI Usage Widget';
 const APP_ID = 'com.jameshan.aiusagewidget';
-const WINDOW_MODES = Object.freeze({
-  compact: Object.freeze({ width: 304, height: 226, minWidth: 260, minHeight: 200, maxWidth: 520, maxHeight: 420 }),
-  expanded: Object.freeze({ width: 620, height: 560, minWidth: 480, minHeight: 360, maxWidth: 960, maxHeight: 900 })
-});
-const SCREEN_MARGIN = 10;
+const POPOVER_SIZE = Object.freeze({ width: 400, height: 600 });
+// A click on the tray icon blurs the open panel before the click arrives, so a
+// hide this recent means the click was meant to close it.
+const BLUR_CLICK_GRACE_MS = 300;
 const CHROME_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const ALLOWED_LINKS = Object.freeze({
   claude: 'https://claude.ai',
-  codexDocs: 'https://developers.openai.com/codex',
   source: 'https://github.com/jdventures222/ai-usage-widget'
 });
 
@@ -129,9 +124,7 @@ let claudeProvider = null;
 let refreshTimer = null;
 let isQuitting = false;
 let refreshPromise = null;
-let compactMode = store.get('windowCompact', true) !== false;
-let persistBoundsTimer = null;
-let changingWindowMode = false;
+let lastBlurHideAt = 0;
 
 function legacyConfigPath() {
   if (process.platform === 'darwin') {
@@ -250,163 +243,50 @@ async function migrateLegacyCredentialIfNeeded(migration) {
   }
 }
 
-function currentModeKey() {
-  return compactMode ? 'compact' : 'expanded';
+function positionPopover() {
+  const trayBounds = tray?.getBounds();
+  const display = trayBounds && trayBounds.width > 0
+    ? screen.getDisplayMatching(trayBounds)
+    : screen.getPrimaryDisplay();
+  mainWindow.setBounds(popoverBounds(trayBounds, display.workArea, POPOVER_SIZE), false);
 }
 
-function modeLimits(mode = currentModeKey()) {
-  return WINDOW_MODES[mode] || WINDOW_MODES.compact;
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) createMainWindow();
+  positionPopover();
+  if (process.platform === 'darwin') app.focus({ steal: true });
+  mainWindow.show();
+  mainWindow.focus();
 }
 
-function displayForWidget(bounds, mode = currentModeKey()) {
-  if (bounds && Number.isFinite(bounds.x) && Number.isFinite(bounds.y)) {
-    return screen.getDisplayMatching(bounds);
-  }
-  const savedId = store.get(`windowDisplayIdsV2.${mode}`);
-  return screen.getAllDisplays().find((display) => String(display.id) === String(savedId)) ||
-    screen.getPrimaryDisplay();
-}
-
-function cornerBounds(width, height, display = displayForWidget()) {
-  const area = display.workArea;
-  const corner = getSettings().widgetCorner;
-  const left = corner.endsWith('left');
-  const top = corner.startsWith('top');
-  return {
-    x: Math.round(left ? area.x + SCREEN_MARGIN : area.x + area.width - width - SCREEN_MARGIN),
-    y: Math.round(top ? area.y + SCREEN_MARGIN : area.y + area.height - height - SCREEN_MARGIN),
-    width,
-    height
-  };
-}
-
-function constrainBounds(input, mode = currentModeKey()) {
-  const limits = modeLimits(mode);
-  const candidate = input && typeof input === 'object' ? input : {};
-  const display = displayForWidget(candidate, mode);
-  const area = display.workArea;
-  const width = Math.min(
-    Math.max(limits.minWidth, Math.round(Number(candidate.width) || limits.width)),
-    Math.min(limits.maxWidth, area.width)
-  );
-  const height = Math.min(
-    Math.max(limits.minHeight, Math.round(Number(candidate.height) || limits.height)),
-    Math.min(limits.maxHeight, area.height)
-  );
-  const proposedX = Math.round(Number(candidate.x));
-  const proposedY = Math.round(Number(candidate.y));
-  const visibleWidth = Math.min(96, width);
-  // The 32 px drag header is sufficient to recover a deliberately tucked-away HUD.
-  const visibleHeight = Math.min(32, height);
-  const x = Number.isFinite(proposedX)
-    ? Math.min(area.x + area.width - visibleWidth, Math.max(area.x - width + visibleWidth, proposedX))
-    : cornerBounds(width, height, display).x;
-  const y = Number.isFinite(proposedY)
-    ? Math.min(area.y + area.height - visibleHeight, Math.max(area.y, proposedY))
-    : cornerBounds(width, height, display).y;
-  return { x, y, width, height };
-}
-
-function storedBounds(mode = currentModeKey()) {
-  const saved = store.get(`windowBoundsV2.${mode}`);
-  if (!saved || typeof saved !== 'object') return null;
-  return constrainBounds(saved, mode);
-}
-
-function initialBounds(mode = currentModeKey()) {
-  const saved = storedBounds(mode);
-  if (saved) return saved;
-  const limits = modeLimits(mode);
-  return cornerBounds(limits.width, limits.height, displayForWidget(null, mode));
-}
-
-function persistCurrentBounds() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  clearTimeout(persistBoundsTimer);
-  const mode = currentModeKey();
-  const bounds = mainWindow.getBounds();
-  const display = screen.getDisplayMatching(bounds);
-  store.set(`windowBoundsV2.${mode}`, bounds);
-  store.set(`windowDisplayIdsV2.${mode}`, String(display.id));
-  hardenStorePermissions(store);
-}
-
-function schedulePersistBounds() {
-  if (changingWindowMode) return;
-  clearTimeout(persistBoundsTimer);
-  persistBoundsTimer = setTimeout(persistCurrentBounds, 250);
-  persistBoundsTimer.unref?.();
-}
-
-function applyModeBounds({ snap = false } = {}) {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const mode = currentModeKey();
-  const limits = modeLimits(mode);
-  changingWindowMode = true;
-  mainWindow.setMinimumSize(limits.minWidth, limits.minHeight);
-  mainWindow.setMaximumSize(limits.maxWidth, limits.maxHeight);
-  const current = mainWindow.getBounds();
-  const target = snap
-    ? cornerBounds(current.width, current.height, displayForWidget(current, mode))
-    : (storedBounds(mode) || initialBounds(mode));
-  mainWindow.setBounds(constrainBounds(target, mode), false);
-  setTimeout(() => { changingWindowMode = false; }, 300).unref?.();
-}
-
-function ensureMainWindowVisible() {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  const current = mainWindow.getBounds();
-  const safe = constrainBounds(current);
-  if (['x', 'y', 'width', 'height'].some((key) => current[key] !== safe[key])) {
-    changingWindowMode = true;
-    mainWindow.setBounds(safe, false);
-    setTimeout(() => { changingWindowMode = false; persistCurrentBounds(); }, 300).unref?.();
-  }
-}
-
-function showMainWindow({ focus = true } = {}) {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    createMainWindow();
+function togglePopover() {
+  if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+    mainWindow.hide();
     return;
   }
-  ensureMainWindowVisible();
-  if (mainWindow.isMinimized()) mainWindow.restore();
-  if (focus) {
-    mainWindow.show();
-    mainWindow.focus();
-  } else {
-    mainWindow.showInactive();
-  }
+  if (Date.now() - lastBlurHideAt < BLUR_CLICK_GRACE_MS) return;
+  showMainWindow();
 }
 
 function createMainWindow() {
-  const limits = modeLimits();
-  const initial = initialBounds();
-
-  // macOS can pull a partly offscreen window fully into the work area while it
-  // is being created. Suppress those synthetic move events and re-apply the
-  // user's already-constrained bounds after the native window is visible.
-  changingWindowMode = true;
   mainWindow = new BrowserWindow({
-    ...initial,
-    minWidth: limits.minWidth,
-    maxWidth: limits.maxWidth,
-    minHeight: limits.minHeight,
-    maxHeight: limits.maxHeight,
+    width: POPOVER_SIZE.width,
+    height: POPOVER_SIZE.height,
     frame: false,
     transparent: false,
     backgroundColor: '#00000000',
     roundedCorners: true,
     hasShadow: true,
-    resizable: true,
+    resizable: false,
+    movable: false,
     show: false,
-    alwaysOnTop: getSettings().alwaysOnTop,
+    alwaysOnTop: true,
     skipTaskbar: true,
     hiddenInMissionControl: true,
-    movable: true,
     minimizable: false,
+    maximizable: false,
     fullscreenable: false,
-    vibrancy: process.platform === 'darwin' ? 'hud' : undefined,
+    vibrancy: process.platform === 'darwin' ? 'popover' : undefined,
     visualEffectState: process.platform === 'darwin' ? 'active' : undefined,
     title: APP_NAME,
     // macOS takes the application icon from the signed bundle; nativeImage
@@ -421,20 +301,16 @@ function createMainWindow() {
     }
   });
 
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', (event, url) => {
     if (url !== mainWindow.webContents.getURL()) event.preventDefault();
   });
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.showInactive();
-    mainWindow.setBounds(initial, false);
-    setTimeout(() => {
-      changingWindowMode = false;
-      persistCurrentBounds();
-    }, 300).unref?.();
+  mainWindow.on('blur', () => {
+    if (!mainWindow || mainWindow.isDestroyed() || mainWindow.webContents.isDevToolsOpened()) return;
+    lastBlurHideAt = Date.now();
+    mainWindow.hide();
   });
-  mainWindow.on('move', schedulePersistBounds);
-  mainWindow.on('resize', schedulePersistBounds);
   mainWindow.on('close', (event) => {
     if (!isQuitting && tray) {
       event.preventDefault();
@@ -452,36 +328,35 @@ function createTray() {
   if (process.platform === 'darwin') image.setTemplateImage(true);
   tray = new Tray(image);
   tray.setToolTip(APP_NAME);
-  tray.on('click', () => {
-    if (mainWindow?.isVisible()) mainWindow.hide(); else showMainWindow();
-  });
-  rebuildTrayMenu();
-}
-
-function rebuildTrayMenu() {
-  if (!tray) return;
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Show AI Usage Widget', click: showMainWindow },
+  const menu = Menu.buildFromTemplate([
+    { label: 'Show usage', click: showMainWindow },
     { label: 'Refresh now', click: () => refreshProviders({ force: true }) },
     { type: 'separator' },
     { label: 'Quit', click: () => { isQuitting = true; app.quit(); } }
-  ]));
+  ]);
+  // Linux tray hosts often deliver no click events, only the context menu.
+  if (process.platform === 'linux') {
+    tray.setContextMenu(menu);
+  } else {
+    tray.on('click', togglePopover);
+    tray.on('right-click', () => tray.popUpContextMenu(menu));
+  }
 }
 
 function updateTray(snapshots) {
   if (!tray) return;
+  const snapshot = snapshots?.claude;
+  const highest = highestUsage(snapshot);
   const lines = [];
-  let highest = null;
-  for (const snapshot of Object.values(snapshots || {})) {
-    if (!snapshot || snapshot.status === 'disabled') continue;
-    const values = snapshot.buckets.map((bucket) => bucket.usedPercent).filter(Number.isFinite);
-    const providerHigh = values.length ? Math.max(...values) : null;
-    if (providerHigh !== null && !snapshot.stale) highest = highest === null ? providerHigh : Math.max(highest, providerHigh);
+  if (snapshot) {
     const suffix = snapshot.stale ? ' (stale)' : '';
-    lines.push(`${snapshot.providerName}: ${providerHigh === null ? snapshot.status : `${Math.round(providerHigh)}%`}${suffix}`);
+    lines.push(`${snapshot.providerName}: ${highest === null ? snapshot.status : `${Math.round(highest)}%`}${suffix}`);
   }
   tray.setToolTip([APP_NAME, ...lines].join('\n'));
-  if (process.platform === 'darwin') tray.setTitle(highest === null ? '' : ` ${Math.round(highest)}%`);
+  if (process.platform === 'darwin') {
+    const title = formatMenuBarTitle(snapshot);
+    tray.setTitle(title ? ` ${title}` : '', { fontType: 'monospacedDigit' });
+  }
 }
 
 function maybeNotify(snapshots) {
@@ -546,22 +421,7 @@ function restartRefreshTimer() {
   refreshTimer.unref?.();
 }
 
-function applySettings(settings, options = {}) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    if (mainWindow.isAlwaysOnTop() !== settings.alwaysOnTop) {
-      mainWindow.setAlwaysOnTop(settings.alwaysOnTop, 'floating');
-    }
-    if (mainWindow.isVisibleOnAllWorkspaces() !== settings.allSpaces) {
-      mainWindow.setVisibleOnAllWorkspaces(settings.allSpaces, { visibleOnFullScreen: true });
-    }
-    if (Math.abs(mainWindow.getOpacity() - settings.hudOpacity) > 0.001) {
-      mainWindow.setOpacity(settings.hudOpacity);
-    }
-    if (options.snapToCorner) applyModeBounds({ snap: true });
-  }
-  if (process.platform === 'darwin' && app.dock) {
-    if (settings.minimizeToTray) app.dock.hide(); else app.dock.show();
-  }
+function applySettings(settings) {
   if (app.isPackaged && process.platform !== 'linux') {
     app.setLoginItemSettings({ openAtLogin: settings.autoStart, openAsHidden: true });
   }
@@ -607,46 +467,38 @@ function registerIpc() {
     settings: getSettings(),
     snapshots: providerManager.getSnapshots(),
     history: providerManager.getHistory(),
-    version: app.getVersion(),
-    compactMode
+    version: app.getVersion()
   }));
   handle('providers:refresh', (providerId) => refreshProviders({
     force: true,
     providerId: typeof providerId === 'string' ? providerId : undefined
   }));
+  // refreshProviders hands back an in-flight refresh, which started before the
+  // account changed, so wait it out and fetch again.
+  const refreshClaude = async () => {
+    if (refreshPromise) await refreshPromise.catch(() => {});
+    await refreshProviders({ force: true, providerId: 'claude' });
+  };
   handle('claude:connect', async () => {
     const result = await claudeProvider.connect();
-    if (result.success) await refreshProviders({ force: true, providerId: 'claude' });
+    // Also after a failure: a refresh that overlapped the attempt left a
+    // "signing in" snapshot behind.
+    await refreshClaude();
     hardenStorePermissions(store);
     return result;
   });
   handle('claude:disconnect', async () => {
     await claudeProvider.disconnect();
-    await refreshProviders({ force: true, providerId: 'claude' });
+    await refreshClaude();
     hardenStorePermissions(store);
     return true;
   });
   handle('settings:get', () => getSettings());
   handle('settings:save', async (input) => {
-    const current = getSettings();
-    const requested = input && typeof input === 'object' ? input : {};
-    requested.codexExecutable = current.codexExecutable;
-    const settings = saveSettings(requested);
-    applySettings(settings, { snapToCorner: settings.widgetCorner !== current.widgetCorner });
+    const settings = saveSettings(input && typeof input === 'object' ? input : {});
+    applySettings(settings);
     await refreshProviders({ force: true });
     return settings;
-  });
-  handle('codex:choose-executable', async () => {
-    const result = await dialog.showOpenDialog(mainWindow, {
-      title: 'Select the Codex executable',
-      properties: ['openFile', 'dontAddToRecent']
-    });
-    if (result.canceled || result.filePaths.length !== 1) return { success: false, canceled: true };
-    const resolved = discoverCodexExecutable({ configuredPath: result.filePaths[0], environment: { PATH: '' } });
-    if (!resolved) return { success: false, error: 'not_executable' };
-    const settings = saveSettings({ ...getSettings(), codexExecutable: resolved });
-    await refreshProviders({ force: true, providerId: 'codex' });
-    return { success: true, path: settings.codexExecutable };
   });
   handle('diagnostics:copy', async () => {
     clipboard.writeText(JSON.stringify(await safeDiagnostics(), null, 2));
@@ -658,16 +510,7 @@ function registerIpc() {
     shell.openExternal(url);
     return true;
   });
-  on('window:minimize', () => mainWindow?.minimize());
-  on('window:close', () => mainWindow?.close());
-  handle('window:set-mode', (requestedCompact) => {
-    persistCurrentBounds();
-    compactMode = requestedCompact !== false;
-    store.set('windowCompact', compactMode);
-    hardenStorePermissions(store);
-    applyModeBounds();
-    return compactMode;
-  });
+  on('window:close', () => mainWindow?.hide());
 }
 
 function denySessionPermissions(browserSession) {
@@ -691,7 +534,6 @@ app.whenReady().then(async () => {
   });
   if (await migrateLegacyCredentialIfNeeded(migration)) migration.credentialMigrated = true;
   if (!store.has('settings')) saveSettings(DEFAULT_SETTINGS);
-  applyPersistentHudDefaults(store);
   store.set('schemaVersion', SCHEMA_VERSION);
   hardenStorePermissions(store);
 
@@ -705,25 +547,25 @@ app.whenReady().then(async () => {
     BrowserWindow,
     browserSession: claudeSession,
     fetchMultipleViaWindow,
-    mainWindow: () => mainWindow
-  });
-  const codexProvider = new CodexProvider({
-    getSettings,
-    clientVersion: app.getVersion()
+    safariImportAvailable: app.isPackaged,
+    openExternal: (url) => { shell.openExternal(url); },
+    // The cookie is read from Safari, so the sign-in must happen there even
+    // when another browser is the default.
+    openInSafari: (url) => {
+      spawn('/usr/bin/open', ['-a', 'Safari', url], { shell: false, stdio: 'ignore' }).on('error', () => {});
+    }
   });
   providerManager = new ProviderManager({
-    providers: [claudeProvider, codexProvider],
+    providers: [claudeProvider],
     store,
     getSettings
   });
 
   registerIpc();
-  if (process.platform === 'darwin' && app.dock && getSettings().minimizeToTray) app.dock.hide();
+  app.dock?.hide();
   createMainWindow();
   createTray();
   applySettings(getSettings());
-  screen.on('display-metrics-changed', ensureMainWindowVisible);
-  screen.on('display-removed', ensureMainWindowVisible);
   powerMonitor.on('resume', () => refreshProviders({ force: true }));
   await refreshProviders({ force: true });
 
@@ -740,8 +582,6 @@ app.on('activate', showMainWindow);
 app.on('before-quit', () => {
   isQuitting = true;
   clearInterval(refreshTimer);
-  clearTimeout(persistBoundsTimer);
-  persistCurrentBounds();
   providerManager?.dispose();
 });
 app.on('window-all-closed', () => {

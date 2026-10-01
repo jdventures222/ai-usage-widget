@@ -1,40 +1,40 @@
 # AI Usage Widget
 
-A private, low-profile macOS HUD for the subscription usage that matters on this MacBook Air.
+A private, low-profile menu bar app for the Claude subscription usage that matters on this MacBook Air.
 
-The compact view intentionally contains only:
+It tracks one Claude subscription account and shows only:
 
-- One canonical Codex usage summary.
-- Claude's 5-hour limit.
-- Claude's weekly limit.
-- Claude's Fable weekly limit.
+- The all-models 5-hour limit.
+- The all-models 7-day limit.
+- The Fable 7-day limit.
 
-GPT Reserve, Codex Spark, other Claude scoped/model limits, spend controls, prepaid balances, and credits are discarded before display and history storage.
+Other Claude scoped/model limits, spend controls, prepaid balances, and credits are discarded before display and history storage.
 
 ## Experience
 
-- Starts as a translucent four-row HUD without taking keyboard focus.
-- Remains above normal windows and can appear on every macOS Space.
-- Drag the header to move it; drag a native edge or corner to resize it.
-- Remembers compact and expanded position/size independently.
-- Expand for provider recovery, local history, settings, and diagnostics.
-- Supports opacity, snap-corner, theme, refresh, alerts, menu-bar-only, and launch-at-login controls.
-
-The menu-bar icon is always available as a recovery surface if the HUD is hidden.
+- Lives in the macOS menu bar with no Dock icon (`LSUIElement`).
+- The menu bar shows the icon plus the tightest current limit, e.g. `42%`. A `~` prefix means a last-known (stale) value and `–` means no data yet.
+- Clicking the icon opens a dropdown panel anchored under it with the usage card (bars, reset times, connect/disconnect), an optional usage-history chart, and Settings. The panel hides when it loses focus.
+- Right-clicking the icon offers Show usage, Refresh now, and Quit.
+- On Windows/Linux the tray tooltip shows the stats.
+- Settings: refresh interval, theme, warn/danger thresholds, usage alerts (per limit, once per threshold and reset window), local usage history (8 days), and launch at login.
 
 ## Data sources
 
-### Codex
-
-The app discovers the locally installed, already authenticated `codex` executable and performs a bounded one-shot JSON-RPC exchange with `codex app-server --stdio`. It never reads `~/.codex/auth.json`, copies a token, or launches through a shell.
-
-Only the canonical `codex` limit group is accepted. A legacy single-limit response is accepted only when the multi-limit map is absent.
-
 ### Claude
 
-The app uses a dedicated sandboxed Electron browser session for the existing Claude web-account integration. Its HTTP-only session cookie stays in the main process and is encrypted using Electron `safeStorage`.
+The account has a sandboxed, isolated persistent Electron browser session. Its session cookie stays in the main process and is encrypted using Electron `safeStorage` under store keys `claude.*` in partition `persist:ai-usage-claude`, unchanged from 2.0, so the existing login and history carry over.
 
-The Claude and Codex subscription interfaces used here are private or experimental. They can change without notice. This project is not affiliated with Anthropic or OpenAI.
+To connect:
+
+- **Connect from Safari** (macOS) adopts the claude.ai `sessionKey` cookie Safari currently holds, read from Safari's `Cookies.binarycookies`. It needs Full Disk Access. Only the installed (packaged) app reads Safari. A development run (`npm start`) uses the embedded sign-in window instead, so Full Disk Access is never granted to the stock Electron binary. The reader refuses a cookie store that is not a regular file or is over 32 MB and skips other sites' cookies without decoding them.
+- On Windows/Linux an embedded claude.ai sign-in window runs in the isolated session.
+
+Disconnect asks for a second click in the panel. Disconnect and any failed sign-in wipe the whole isolated sign-in partition (all cookies and storage, including Google/Apple/Microsoft sign-in cookies) plus the encrypted key. Electron cookie encryption is enabled (`enableCookieEncryption` fuse). A refresh never runs during a sign-in, and a refresh that overlaps a sign-in discards its result instead of overwriting or deleting the new login.
+
+Claude Code's own credentials (`~/.claude/.credentials.json` and the "Claude Code-credentials" keychain items) are never read.
+
+The Claude subscription interface used here is private. It can change without notice. This project is not affiliated with Anthropic.
 
 ## First launch and migration
 
@@ -46,7 +46,7 @@ The new app uses its own identity and data directory:
 
 On first launch it reads the old Claude Usage Widget config as an immutable migration source. Supported history and settings are normalized, and a constrained one-time helper re-encrypts the existing Claude credential from the old Keychain identity to the new one without writing plaintext.
 
-The old config is not modified. The old application should be moved to Trash only after the replacement passes live Claude, Codex, relaunch, and packaged checks.
+The old config is not modified. The old application should be moved to Trash only after the replacement passes live Claude, relaunch, and packaged checks.
 
 ## Development
 
@@ -85,7 +85,7 @@ Local development and packaged validation are supported. A broadly distributable
 - No plaintext credential fallback.
 - No credential-bearing IPC or diagnostics.
 - Configuration permissions are hardened to owner read/write (`0600`) where supported.
-- Codex child execution uses constant arguments, `shell: false`, bounded output, a deadline, and forced cleanup.
+- Sandboxed renderer; credentials stay in the main process and IPC checks the sender.
 - Raw provider responses are never persisted.
 
 See [Product requirements](docs/PRD.md), [architecture](docs/ARCHITECTURE.md), and [threat model](docs/THREAT-MODEL.md).
